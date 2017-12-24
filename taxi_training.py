@@ -68,7 +68,7 @@ train[const.f_dropoff_datetime] = pd.to_datetime(train.dropoff_datetime) #Not in
 
 # apply log transformation over trip duration
 # in order to get a bell-shaped like (Gaussian distribusion)
-# train[const.f_log_trip_duration] = np.log(train[const.f_trip_duration].values + 1)
+train[const.f_log_trip_duration] = np.log(train[const.f_trip_duration].values + 1)
 # plt.hist(train[const.f_log_trip_duration].values, bins=100)
 # plt.xlabel('log(trip_duration)')
 # plt.ylabel('number of train records')
@@ -247,8 +247,8 @@ print(len(test.groupby(const.f_dayofweek).size()))
 # day of week (working days) - avg speed is low
 # month of year - avg speed slightly drops from winter to summer (more traffic in summer days)
 
-# train.loc[:, const.f_avg_speed_h] = 1000 * train[const.f_distance_haversine] / train[const.f_trip_duration]
-# train.loc[:, const.f_avg_speed_m] = 1000 * train[const.f_distance_dummy_manhattan] / train[const.f_trip_duration]
+train.loc[:, const.f_avg_speed_h] = 1000 * train[const.f_distance_haversine] / train[const.f_trip_duration]
+train.loc[:, const.f_avg_speed_m] = 1000 * train[const.f_distance_dummy_manhattan] / train[const.f_trip_duration]
 # fig, ax = plt.subplots(ncols=3, sharey=True)
 # ax[0].plot(train.groupby(const.f_Hour).mean()[const.f_avg_speed_h], 'bo-', lw=2, alpha=0.7)
 # ax[1].plot(train.groupby(const.f_dayofweek).mean()[const.f_avg_speed_h], 'go-', lw=2, alpha=0.7)
@@ -263,21 +263,145 @@ print(len(test.groupby(const.f_dayofweek).size()))
 # Avg speed depending on pick-up locations
 train.loc[:, 'pickup_lat_bin'] = np.round(train['pickup_latitude'], 3)
 train.loc[:, 'pickup_long_bin'] = np.round(train['pickup_longitude'], 3)
-# Average speed for regions
-gby_cols = ['pickup_lat_bin', 'pickup_long_bin']
-coord_speed = train.groupby(gby_cols).mean()[['avg_speed_h']].reset_index()
-coord_count = train.groupby(gby_cols).count()[['id']].reset_index()
-coord_stats = pd.merge(coord_speed, coord_count, on=gby_cols)
-coord_stats = coord_stats[coord_stats['id'] > 100]
-fig, ax = plt.subplots(ncols=1, nrows=1)
-ax.scatter(train.pickup_longitude.values[:500000], train.pickup_latitude.values[:500000], color='black', s=1, alpha=0.5)
-ax.scatter(coord_stats.pickup_long_bin.values, coord_stats.pickup_lat_bin.values, c=coord_stats.avg_speed_h.values,
-           cmap='RdYlGn', s=20, alpha=0.5, vmin=1, vmax=8)
-ax.set_xlim(city_long_border)
-ax.set_ylim(city_lat_border)
-ax.set_xlabel('Longitude')
-ax.set_ylabel('Latitude')
-plt.title('Average speed')
+# # Average speed for regions
+# gby_cols = ['pickup_lat_bin', 'pickup_long_bin']
+# coord_speed = train.groupby(gby_cols).mean()[['avg_speed_h']].reset_index()
+# coord_count = train.groupby(gby_cols).count()[['id']].reset_index()
+# coord_stats = pd.merge(coord_speed, coord_count, on=gby_cols)
+# coord_stats = coord_stats[coord_stats['id'] > 100]
+# fig, ax = plt.subplots(ncols=1, nrows=1)
+# ax.scatter(train.pickup_longitude.values[:500000], train.pickup_latitude.values[:500000], color='black', s=1, alpha=0.5)
+# ax.scatter(coord_stats.pickup_long_bin.values, coord_stats.pickup_lat_bin.values, c=coord_stats.avg_speed_h.values,
+#            cmap='RdYlGn', s=20, alpha=0.5, vmin=1, vmax=8)
+# ax.set_xlim(city_long_border)
+# ax.set_ylim(city_lat_border)
+# ax.set_xlabel('Longitude')
+# ax.set_ylabel('Latitude')
+# plt.title('Average speed')
 
 
 plt.show()
+
+
+# Data Enrichment - dd fastest routes data from osrm project
+
+fr1 = pd.read_csv('fastest_routes_train_part_1.csv', usecols=[const.f_id, const.f_total_distance, const.f_total_travel_time,  const.f_number_of_steps])
+fr2 = pd.read_csv('fastest_routes_train_part_2.csv', usecols=[const.f_id, const.f_total_distance, const.f_total_travel_time, const.f_number_of_steps])
+test_street_info = pd.read_csv('fastest_routes_test.csv',
+                               usecols=[const.f_id, const.f_total_distance, const.f_total_travel_time, const.f_number_of_steps])
+train_street_info = pd.concat((fr1, fr2))
+train = train.merge(train_street_info, how='left', on='id')
+test = test.merge(test_street_info, how='left', on='id')
+
+
+# Dummy Variables
+
+vendor_train = pd.get_dummies(train[const.f_vendor_id], prefix='vi', prefix_sep='_')
+vendor_test = pd.get_dummies(test[const.f_vendor_id], prefix='vi', prefix_sep='_')
+passenger_count_train = pd.get_dummies(train[const.f_passenger_count], prefix='pc', prefix_sep='_')
+passenger_count_test = pd.get_dummies(test[const.f_passenger_count], prefix='pc', prefix_sep='_')
+store_and_fwd_flag_train = pd.get_dummies(train[const.f_store_and_fwd_flag], prefix='sf', prefix_sep='_')
+store_and_fwd_flag_test = pd.get_dummies(test[const.f_store_and_fwd_flag], prefix='sf', prefix_sep='_')
+cluster_pickup_train = pd.get_dummies(train[const.f_pickup_cluster], prefix='p', prefix_sep='_')
+cluster_pickup_test = pd.get_dummies(test[const.f_pickup_cluster], prefix='p', prefix_sep='_')
+cluster_dropoff_train = pd.get_dummies(train[const.f_dropoff_cluster], prefix='d', prefix_sep='_')
+cluster_dropoff_test = pd.get_dummies(test[const.f_dropoff_cluster], prefix='d', prefix_sep='_')
+
+month_train = pd.get_dummies(train[const.f_Month], prefix='m', prefix_sep='_')
+month_test = pd.get_dummies(test[const.f_Month], prefix='m', prefix_sep='_')
+dom_train = pd.get_dummies(train[const.f_DayofMonth], prefix='dom', prefix_sep='_')
+dom_test = pd.get_dummies(test[const.f_DayofMonth], prefix='dom', prefix_sep='_')
+hour_train = pd.get_dummies(train[const.f_Hour], prefix='h', prefix_sep='_')
+hour_test = pd.get_dummies(test[const.f_Hour], prefix='h', prefix_sep='_')
+dow_train = pd.get_dummies(train[const.f_dayofweek], prefix='dow', prefix_sep='_')
+dow_test = pd.get_dummies(test[const.f_dayofweek], prefix='dow', prefix_sep='_')
+
+# Test dummy output
+# print(vendor_train.shape), print(vendor_test.shape)
+# print(passenger_count_train.shape), print(passenger_count_test.shape)
+# print(store_and_fwd_flag_train.shape), print(store_and_fwd_flag_test.shape)
+# print(cluster_pickup_train.shape), print(cluster_pickup_test.shape)
+# print(cluster_dropoff_train.shape), print(cluster_dropoff_test.shape)
+# print(month_train.shape), print(month_test.shape)
+# print(dom_train.shape), print(dom_test.shape)
+# print(hour_train.shape), print(hour_test.shape)
+# print(dow_train.shape), print(dow_test.shape)
+
+passenger_count_test = passenger_count_test.drop('pc_9', axis = 1) # drop the test trips with 9 passengers
+
+train = train.drop([const.f_id,const.f_vendor_id,const.f_passenger_count,const.f_store_and_fwd_flag,const.f_Month,const.f_DayofMonth,const.f_Hour,const.f_dayofweek,
+                    const.f_pickup_longitude,const.f_pickup_latitude,const.f_dropoff_longitude,const.f_dropoff_latitude,const.f_pickup_datetime,const.f_pickup_date],axis = 1)
+Test_id = test[const.f_id]
+test = test.drop([const.f_id,const.f_vendor_id,const.f_passenger_count,const.f_store_and_fwd_flag,const.f_Month,const.f_DayofMonth,const.f_Hour,const.f_dayofweek,
+                    const.f_pickup_longitude,const.f_pickup_latitude,const.f_dropoff_longitude,const.f_dropoff_latitude,const.f_pickup_datetime,const.f_pickup_date], axis = 1)
+
+train = train.drop([const.f_dropoff_datetime,const.f_avg_speed_h,const.f_avg_speed_m,const.f_pickup_lat_bin,const.f_pickup_long_bin,const.f_trip_duration], axis = 1)
+
+Train_Master = pd.concat([train,
+                          vendor_train,
+                          passenger_count_train,
+                          store_and_fwd_flag_train,
+                          cluster_pickup_train,
+                          cluster_dropoff_train,
+                          month_train,
+                          dom_train,
+                          hour_test,
+                          dow_train
+                         ], axis=1)
+
+Test_master = pd.concat([test,
+                         vendor_test,
+                         passenger_count_test,
+                         store_and_fwd_flag_test,
+                         cluster_pickup_test,
+                         cluster_dropoff_test,
+                         month_test,
+                         dom_test,
+                         hour_test,
+                         dow_test], axis=1)
+
+print(Train_Master.shape), print(Test_master.shape)
+
+
+# Split Train_Master into train-test (70-30)
+Train, Test = train_test_split(Train_Master, test_size = 0.3)
+
+X_train = Train.drop([const.f_log_trip_duration], axis=1)
+Y_train = Train[const.f_log_trip_duration]
+X_test = Test.drop([const.f_log_trip_duration], axis=1)
+Y_test = Test[const.f_log_trip_duration]
+
+Y_test = Y_test.reset_index().drop('index',axis = 1)
+Y_train = Y_train.reset_index().drop('index',axis = 1)
+
+# Train & Test Validation using xgboost
+
+dtrain = xgb.DMatrix(X_train, label=Y_train)
+dvalid = xgb.DMatrix(X_test, label=Y_test)
+dtest = xgb.DMatrix(Test_master)
+watchlist = [(dtrain, 'train'), (dvalid, 'valid')]
+
+
+# XGBoost - Training the model and testing the Accuracy
+
+xgb_pars = {'min_child_weight': 1, 'eta': 0.5, 'colsample_bytree': 0.9,
+            'max_depth': 6,
+'subsample': 0.9, 'lambda': 1., 'nthread': -1, 'booster' : 'gbtree', 'silent': 1,
+'eval_metric': 'rmse', 'objective': 'reg:linear'}
+model = xgb.train(xgb_pars, dtrain, 15, watchlist, early_stopping_rounds=2,
+      maximize=False, verbose_eval=1)
+print('Modeling RMSLE %.5f' % model.best_score)
+
+
+xgb.plot_importance(model, max_num_features=28, height=0.7) #plot features importance
+
+
+pred = model.predict(dtest)
+pred = np.exp(pred) - 1
+
+
+# Output prediction
+submission = pd.concat([Test_id, pd.DataFrame(pred)], axis=1)
+submission.columns = [const.f_id,const.f_trip_duration]
+submission[const.f_trip_duration] = submission.apply(lambda x : 1 if (x[const.f_trip_duration] <= 0) else x[const.f_trip_duration], axis = 1)
+submission.to_csv("submission.csv", index=False)
